@@ -1,758 +1,528 @@
-/* /////////////////////////////////////////////////////////
-//                ENBSeries effect file                //
-//         visit http://enbdev.com for updates         //
-//       Copyright (c) 2007-2015 Boris Vorontsov       //
-//----------------------ENB PRESET---------------------//
-					THE ENHANCER 1.0 
-//-----------------------CREDITS-----------------------//
-//     Please do not redistribute without credits      //
-// Boris: For ENBSeries and his knowledge and codes    //
-// Matso: Author of original DOF code          	   	   //
-// L00 :  Shader Setup, Presets and Settings,          //
-//        Port and Modification of Shaders             //
-//        and author of this file                      //
-/////////////////////////////////////////////////////////
-//                		THE ENHANCER                   //
-//-----------------------------------------------------// */
+//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+// ENBSeries Skyrim SE dx11 sm5 effect file
+// visit facebook.com/MartyMcModding for news/updates
+//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+// Advanced Depth of Field 3.0.1
+// Copyright (c) 2008-2019 Marty McFly / Pascal Gilcher
+// CC BY-NC-ND 3.0 licensed.
+// redistribute AS IS, no changes to the file without permission
+//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-//+++++++++++++++++++++++++++++
-// Internal parameters, can be modified
-//+++++++++++++++++++++++++++++
-bool	bManualFocus			<string UIName="Manual Focus (Click on Focus Point)";> = {false};
-int		iDOFPreset				<string UIName="Blur Power";string UIWidget="quality";int UIMin=-1;int UIMax=4;> = {1};
+/*******************************************************************
+//Non-UI vars. Some could be made changeable in realtime, at the cost
+//of performance.
+//Use APPLY EFFECTS in enbseries.ini window if changes do not apply.
+*******************************************************************/
 
-#define fFocusBias 		0.045
-#define fBlurScale		fBS*0.0035
-#define fBokehIntensity	fBI*0.9
-#define fADOF_AutofocusCenter 		float2(0.43,0.43)
-//+++++++++++++++++++++++++++++
+//------------------------------------------------------------------
+//Enables partial occlusion of bokeh disc at screen corners
+#define ADOF_OPTICAL_VIGNETTE_ENABLE	           0	  //[0 or 1]
+//------------------------------------------------------------------
+//Enables chromatic aberration at bokeh shape borders.
+#define ADOF_CHROMATIC_ABERRATION_ENABLE           1	  //[0 or 1]
+
+//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+//UI vars, nothing to edit for standard users below this point
+//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+bool    bADOF_AutofocusEnable 		< string UIName="DOF: Enable Autofocus";																									> = {true};
+float2	fADOF_AutofocusCenter 		< string UIName="DOF: Autofocus sample center"; 	string UIWidget="Spinner"; 	float UIStep=0.01; 	float UIMin=0.00; 	float UIMax=1.00;	> = {0.5,0.5};
+float	fADOF_AutofocusRadius		< string UIName="DOF: Autofocus sample radius";		string UIWidget="Spinner";	float UIStep=0.01;	float UIMin=0.01;	float UIMax=1.00;	> = {0.05};
+float	fADOF_ManualfocusDepth		< string UIName="DOF: Manual focus depth";			string UIWidget="Spinner";	float UIStep=0.0001;float UIMin=0.00;	float UIMax=1.0;	> = {0.05};
+float	fADOF_NearBlurCurve			< string UIName="DOF: Near blur curve";				string UIWidget="Spinner";	float UIStep=0.01;	float UIMin=0.01;	float UIMax=20.0;	> = {1.0};
+float	fADOF_FarBlurCurve			< string UIName="DOF: Far blur curve";				string UIWidget="Spinner";	float UIStep=0.01;	float UIMin=0.01;	float UIMax=20.0;	> = {1.4};
+float	fADOF_HyperFocus			< string UIName="DOF: Hyperfocal depth distance";	string UIWidget="Spinner";	float UIStep=0.001;	float UIMin=0.00;	float UIMax=1.0;	> = {0.015};
+float	fADOF_RenderResolutionMult	< string UIName="DOF: Blur render res mult";		string UIWidget="Spinner";	float UIStep=0.01;	float UIMin=0.50;	float UIMax=1.0;	> = {0.5};
+float	fADOF_BokehIntensity		< string UIName="DOF: Bokeh Intensity";				string UIWidget="Spinner";	float UIStep=0.01;	float UIMin=0.0;	float UIMax=1.0;	> = {0.5};
+float	fADOF_ShapeRadius			< string UIName="DOF: Bokeh shape max size";		string UIWidget="Spinner";	float UIStep=0.1;	float UIMin=0.0;	float UIMax=100.0;	> = {15.0};
+int		iADOF_ShapeVertices			< string UIName="DOF: Bokeh shape vertices";		string UIWidget="spinner";						int UIMin=3;		int UIMax=9;		> = {6};
+int		iADOF_ShapeQuality			< string UIName="DOF: Bokeh shape quality";			string UIWidget="spinner";						int UIMin=2;		int UIMax=25;		> = {5};
+float	fADOF_ShapeCurvatureAmount	< string UIName="DOF: Bokeh shape roundness";		string UIWidget="Spinner";	float UIStep=0.01;	float UIMin=-1.0;	float UIMax=1.0;	> = {1.0};
+float	fADOF_ShapeRotation			< string UIName="DOF: Bokeh shape rotation (\xB0)";	string UIWidget="Spinner";	float UIStep=1;		float UIMin=0;		float UIMax=360;	> = {15};
+float	fADOF_ShapeAnamorphRatio	< string UIName="DOF: Bokeh shape aspect ratio";	string UIWidget="Spinner";	float UIStep=0.01;	float UIMin=0.0;	float UIMax=1.0;	> = {1.0};
+float	fADOF_SmootheningAmount		< string UIName="DOF: Gaussian postblur width";		string UIWidget="Spinner";	float UIStep=1.0;	float UIMin=0.0;	float UIMax=20.0;	> = {4.0};
+#if (ADOF_OPTICAL_VIGNETTE_ENABLE != 0)
+ float	fADOF_ShapeVignetteCurve	< string UIName="DOF: Bokeh shape vignette curve";	string UIWidget="Spinner";	float UIStep=0.01;	float UIMin=0.5;	float UIMax=2.5;	> = {0.75};
+ float	fADOF_ShapeVignetteAmount	< string UIName="DOF: Bokeh shape vignette amount";	string UIWidget="Spinner";	float UIStep=0.01;	float UIMin=0.0;	float UIMax=2.0;	> = {1.0};
+#endif
+#if (ADOF_CHROMATIC_ABERRATION_ENABLE != 0)
+ float	fADOF_ShapeChromaAmount		< string UIName="DOF: Shape chromatic aberration amount";string UIWidget="Spinner";float UIStep=0.01;float UIMin=-1.00;	float UIMax=1.00;	> = {-1.0};
+ int	iADOF_ShapeChromaMode		< string UIName="DOF: Shape chromatic aberration type";	string UIWidget="spinner";					int UIMin=0;		int UIMax=2;		> = {2};
+#endif
+
+//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 //external enb parameters, do not modify
-//+++++++++++++++++++++++++++++
-//x = generic timer in range 0..1, period of 16777216 ms (4.6 hours), y = average fps, w = frame time elapsed (in seconds)
-float4	Timer;
-//x = Width, y = 1/Width, z = aspect, w = 1/aspect, aspect is Width/Height
-float4	ScreenSize;
-//changes in range 0..1, 0 means full quality, 1 lowest dynamic quality (0.33, 0.66 are limits for quality levels)
-float	AdaptiveQuality;
-//x = current weather index, y = outgoing weather index, z = weather transition, w = time of the day in 24 standart hours. Weather index is value from weather ini file, for example WEATHER002 means index==2, but index==0 means that weather not captured.
-float4	Weather;
-//x = dawn, y = sunrise, z = day, w = sunset. Interpolators range from 0..1
-float4	TimeOfDay1;
-//x = dusk, y = night. Interpolators range from 0..1
-float4	TimeOfDay2;
-//changes in range 0..1, 0 means that night time, 1 - day time
-float	ENightDayFactor;
-//changes 0 or 1. 0 means that exterior, 1 - interior
-float	EInteriorFactor;
+//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
+float4	Timer; 			//x = generic timer in range 0..1, period of 16777216 ms (4.6 hours), y = average fps, w = frame time elapsed (in seconds)
+float4	ScreenSize; 		//x = Width, y = 1/Width, z = aspect, w = 1/aspect, aspect is Width/Height
+float	AdaptiveQuality;	//changes in range 0..1, 0 means full quality, 1 lowest dynamic quality (0.33, 0.66 are limits for quality levels)
+float4	Weather;		//x = current weather index, y = outgoing weather index, z = weather transition, w = time of the day in 24 standart hours. Weather index is value from weather ini file, for example WEATHER002 means index==2, but index==0 means that weather not captured.
+float4	TimeOfDay1;		//x = dawn, y = sunrise, z = day, w = sunset. Interpolators range from 0..1
+float4	TimeOfDay2;		//x = dusk, y = night. Interpolators range from 0..1
+float	ENightDayFactor;	//changes in range 0..1, 0 means that night time, 1 - day time
+float	EInteriorFactor;	//changes 0 or 1. 0 means that exterior, 1 - interior
 
-//+++++++++++++++++++++++++++++
+//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+//Semi-hardcoded parameters, DO NOT MODIFY unless you know what you do.
+//But what am I saying, you're gonna do it anyways.
+//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+#define DISCRADIUS_RESOLUTION_BOUNDARY_LOWER 	0.25//1.0		//used for blending blurred scene.
+#define DISCRADIUS_RESOLUTION_BOUNDARY_UPPER 	1.0//6.0		//used for blending blurred scene.
+#define DISCRADIUS_RESOLUTION_BOUNDARY_CURVE    0.5		//used for blending blurred scene.
+#define FPS_HAND_BLUR_CUTOFF_DIST		0.3353		//fps hand depth (x10.000), change if you perceive blurred fps weapons.
+#define FPS_HAND_BLUR_CUTOFF_CHECK		0		//blur = max if depth > hand depth, else 0, useful for tweaking above param
+#define GAUSSIAN_BUILDUP_MULT			4.0		//value of x -> gaussian reaches max radius at |CoC| == 1/x
+
+static const float2 PixelSize 			= float2(ScreenSize.y,ScreenSize.y*ScreenSize.z);
+
+#define linearstep(a,b,x) saturate((x-a)/(b-a))
+#define LinearizeDepth(x) x *= rcp(mad(x,-2999.0,3000.0))
+
+//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 //external enb debugging parameters for shader programmers, do not modify
-//+++++++++++++++++++++++++++++
-//keyboard controlled temporary variables. Press and hold key 1,2,3...8 together with PageUp or PageDown to modify. By default all set to 1.0
-float4	tempF1; //0,1,2,3
-float4	tempF2; //5,6,7,8
-float4	tempF3; //9,0
-// xy = cursor position in range 0..1 of screen;
-// z = is shader editor window active;
-// w = mouse buttons with values 0..7 as follows:
-//    0 = none
-//    1 = left
-//    2 = right
-//    3 = left+right
-//    4 = middle
-//    5 = left+middle
-//    6 = right+middle
-//    7 = left+right+middle (or rather cat is sitting on your mouse)
-float4	tempInfo1;
-// xy = cursor position of previous left mouse button click
-// zw = cursor position of previous right mouse button click
-float4	tempInfo2;
+//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-//+++++++++++++++++++++++++++++
+float4	tempF1; 		//0,1,2,3
+float4  tempF2;                 //5,6,7,8
+float4	tempF3; 		//9,0
+float4	tempInfo1; 		//float4(cursorpos.xy 0~1,isshaderwindowopen, mouse buttons)
+float4	tempInfo2;		//float4(cursorpos.xy prev left mouse button click, cursorpos.xy prev right mouse button click)
+
+//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 //mod parameters, do not modify
-//+++++++++++++++++++++++++++++
-//z = ApertureTime multiplied by time elapsed, w = FocusingTime multiplied by time elapsed
-float4				DofParameters;
+//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-Texture2D			TextureCurrent; //current frame focus depth or aperture. unused in dof computation
-Texture2D			TexturePrevious; //previous frame focus depth or aperture. unused in dof computation
-
-Texture2D			TextureOriginal; //color R16B16G16A16 64 bit hdr format
-Texture2D			TextureColor; //color which is output of previous technique (except when drawed to temporary render target), R16B16G16A16 64 bit hdr format
-Texture2D			TextureDepth; //scene depth R32F 32 bit hdr format
-Texture2D			TextureFocus; //this frame focus 1*1 R32F hdr red channel only. computed in PS_Focus
-Texture2D			TextureAperture; //this frame aperture 1*1 R32F hdr red channel only. computed in PS_Aperture
-Texture2D			TextureAdaptation; //previous frame vanilla or enb adaptation 1*1 R32F hdr red channel only. adaptation computed after depth of field and it's kinda "average" brightness of screen!!!
-Texture2D 			texNoise;
-
+float4			DofParameters;		//z = ApertureTime multiplied by time elapsed, w = FocusingTime multiplied by time elapsed
+Texture2D		TextureCurrent; 	//current frame focus depth or aperture. unused in dof computation
+Texture2D		TexturePrevious; 	//previous frame focus depth or aperture. unused in dof computation
+Texture2D		TextureOriginal; 	//color R16B16G16A16 64 bit hdr format
+Texture2D		TextureColor; 		//color which is output of previous technique (except when drawed to temporary render target), R16B16G16A16 64 bit hdr format
+Texture2D		TextureDepth; 		//scene depth R32F 32 bit hdr format
+Texture2D		TextureFocus; 		//this frame focus 1*1 R32F hdr red channel only. computed in PS_Focus
+Texture2D		TextureAperture; 	//this frame aperture 1*1 R32F hdr red channel only. computed in PS_Aperture
+Texture2D		TextureAdaptation;	//previous frame vanilla or enb adaptation 1*1 R32F hdr red channel only. adaptation computed after depth of field and it's kinda "average" brightness of screen!!!
 //temporary textures which can be set as render target for techniques via annotations like <string RenderTarget="RenderTargetRGBA32";>
-Texture2D			RenderTargetRGBA32; //R8G8B8A8 32 bit ldr format
-Texture2D			RenderTargetRGBA64; //R16B16G16A16 64 bit ldr format
-Texture2D			RenderTargetRGBA64F; //R16B16G16A16F 64 bit hdr format
-Texture2D			RenderTargetR16F; //R16F 16 bit hdr format with red channel only
-Texture2D			RenderTargetR32F; //R32F 32 bit hdr format with red channel only
-Texture2D			RenderTargetRGB32F; //32 bit hdr format without alpha
+Texture2D		RenderTargetRGBA32; 	//R8G8B8A8 32 bit ldr format
+Texture2D		RenderTargetRGBA64; 	//R16B16G16A16 64 bit ldr format
+Texture2D		RenderTargetRGBA64F; 	//R16B16G16A16F 64 bit hdr format
+Texture2D		RenderTargetR16F; 	//R16F 16 bit hdr format with red channel only
+Texture2D		RenderTargetR32F; 	//R32F 32 bit hdr format with red channel only
+Texture2D		RenderTargetRGB32F; 	//32 bit hdr format without alpha
 
-SamplerState		Sampler0
+SamplerState		SamplerPoint
 {
-	Filter = MIN_MAG_MIP_POINT;//MIN_MAG_MIP_LINEAR;
+	Filter = MIN_MAG_MIP_POINT;
 	AddressU = Clamp;
 	AddressV = Clamp;
 };
 
-SamplerState		Sampler1
+SamplerState		SamplerLinear
 {
 	Filter = MIN_MAG_MIP_LINEAR;
 	AddressU = Clamp;
 	AddressV = Clamp;
 };
 
-SamplerState		SamplerFocus
-{
-	Filter = MIN_MAG_MIP_Linear;
-	AddressU = Clamp;
-	AddressV = Clamp;
-};
+//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+// Vertex Shader
+//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-// Useful constants
-#define PI				3.1415926535897932384626433832795
-#define CHROMA_POW		32.0								// the bigger the value, the more visible chomatic aberration effect in DoF
-
-// DoF constants
-#define DOF_SCALE		2356.1944901923449288469825374596	// PI * 750
-// Set those below for diffrent blur shapes
-#define FIRST_PASS		0	// only 0, 1, 2, or 3
-#define SECOND_PASS		1	// only 0, 1, 2, or 3
-#define THIRD_PASS		2	// only 0, 1, 2, or 3
-#define FOURTH_PASS		3	// only 0, 1, 2, or 3
-
-
-#ifdef bManualFocus
-	#define DOF(sd,sf)		fBlurScale * smoothstep(fDofBias * tempF1.y, fDofCutoff * tempF1.z, abs(sd - sf))
-#else
-	#define DOF(sd,sf)		fBlurScale * smoothstep(fDofBias, fDofCutoff, abs(sd - sf))
-#endif
-
-
-#define BOKEH_DOWNBLUR	0.3		// the default blur scale is too big for bokeh
-	
-#define EFocusingSensitivity 0.5
-#define EApertureSize 1.0
-#define ESensorSize 25.0
-#define EBokehSoftness 0.1
-#define EBlurRange 2.0
-
-// Methods enabling options
-
-#define USE_SMOOTH_DOF	1			// comment it to disable smooth DoF
-#define USE_BOKEH_DOF	1			// comment it to disable bokeh DoF
-#define USE_NATURAL_BOKEH	1			// diffrent, more natural bokeh shape (comment to disable)
-#define USE_ENHANCED_BOKEH	1			// more pronounced bokeh blur (comment to disable)
-
-// Chromatic aberration parameters
-float3 fvChroma = float3(0.9995, 1.000, 1.0005);// displacement scales of red, green and blue respectively
-#define fBaseRadius 0.9							// below this radius the effect is less visible
-#define fFalloffRadius 1.8						// over this radius the effect is max
-
-// Sharpen parameters
-float2 fvTexelSize = float2(1.0 / 1920.0, 1.0 / 1080.0);	// set your resolution sizes
-
-// Depth of field parameters
-//#define fFocusBias 0.045						// 0.045 bigger values for nearsightedness, smaller for farsightedness (lens focal point distance)
-#define fDofCutoff 0.2							// 0.25 manages the smoothness of the DoF (bigger value results in wider depth of field)
-#define fDofBias 0.07							// distance not taken into account in DoF (all closer then the distance is in focus)
-//#define fBlurScale 0.0034						// .0038 governs image blur scale (the bigger value, the stronger blur)
-#define fBlurCutoff 0.05					    //0.15 bluring tolerance depending on the pixel and sample depth (smaller causes objects edges to be preserved)
-
-#ifdef bManualFocus
-	#define fCloseDofDistance 0.05
-#else
-	#define fCloseDofDistance 0.28
-#endif
-
-
-#define fStepScale 0.00015
-
-// Bokeh parameters
-#define fBokehCurve 4.0							// the larger the value, the more visible the bokeh effect is (not used with brightness limiting)
-//#define fBokehIntensity 0.95					// governs bokeh brightness (not used with brightness limiting)
-#define fBokehConstant 0.1						// constant value of the bokeh weighting
-#define fBokehMaxLevel 45.0						// bokeh max brightness level (scale factor for bokeh samples)
-#define fBokehMin 0.001							// min input cutoff (anything below is 0)
-#define fBokehMax 1.925							// max input cutoff (anything above is 1)
-#define fBokehMaxWeight 25.0					// any weight above will be clamped
-
-#define fBokehLuminance	0.956					// bright pass of the bokeh weight used with radiant version of the bokeh
-#define BOKEH_RADIANT	float3 bct = ct.rgb;float b = GrayScale(bct) + fBokehConstant + length(bct)
-#define BOKEH_PASTEL	float3 bct = BrightBokeh(ct.rgb);float b = dot(bct, bct) + fBokehConstant
-#define BOKEH_VIBRANT	float3 bct = BrightBokeh(ct.rgb);float b = GrayScale(ct.rgb) + dot(bct, bct) + fBokehConstant
-#define BOKEH_FORMULA	BOKEH_RADIANT           // choose one of the above
-#define FAR_CLIP_DIST	10000000.0								
-#define NEAR_CLIP_DIST	10.0									
-#define DEPTH_RANGE		-(NEAR_CLIP_DIST-FAR_CLIP_DIST)*0.01	
-#define linear(t)		((2.0 * NEAR_CLIP_DIST) / (NEAR_CLIP_DIST + FAR_CLIP_DIST - t * (FAR_CLIP_DIST - NEAR_CLIP_DIST)))
-
-// Anamorphic flare parameters
-#define fFlareLuminance 2.0						// bright pass luminance value 
-#define fFlareBlur 500.0						// manages the size of the flare
-#define fFlareIntensity 0.05					// effect intensity
-
-// Bokeh shape offset weights
-#define DEFAULT_OFFSETS	{ -1.282, -0.524, 0.524, 1.282 }
-
-// Sampling vectors	
-float offset[4] = DEFAULT_OFFSETS;
-
-float2 tds[16] = { 
-	float2(0.2007, 0.9796),
-	float2(-0.2007, 0.9796), 
-	float2(0.2007, 0.9796),
-	float2(-0.2007, 0.9796), 
-		
-	float2(0.8240, 0.5665),
-	float2(0.5665, 0.8240),
-	float2(0.8240, 0.5665),
-	float2(0.5665, 0.8240),
-
-	float2(0.9796, 0.2007),
-	float2(0.9796, -0.2007),
-	float2(0.9796, 0.2007),
-	float2(0.9796, -0.2007),
-		
-	float2(-0.8240, 0.5665),
-	float2(-0.5665, 0.8240),
-	float2(-0.8240, 0.5665),
-	float2(-0.5665, 0.8240)
-};			// Natural bokeh sampling directions
-
-float2 rnds[16] = {
-	float2(0.326212, 0.40581),
-    float2(0.840144, 0.07358),
-    float2(0.695914, 0.457137),
-    float2(0.203345, 0.620716),
-    float2(0.96234, 0.194983),
-    float2(0.473434, 0.480026),
-    float2(0.519456, 0.767022),
-    float2(0.185461, 0.893124),
-    float2(0.507431, 0.064425),
-    float2(0.89642, 0.412458),
-    float2(0.32194, 0.932615),
-    float2(0.791559, 0.59771),
-	float2(0.979602, 0.10275),
-	float2(0.56653, 0.82401),
-	float2(0.20071, 0.97966),
-	float2(0.98719, 0.12231)
-};
-//+++++++++++++++++++++++++++++
-//
-//+++++++++++++++++++++++++++++
 struct VS_INPUT_POST
 {
 	float3 pos		: POSITION;
-	float2 txcoord	: TEXCOORD0;
+	float2 txcoord		: TEXCOORD0;
 };
+struct VS_OUTPUT_DOF
+{
+	float4 pos		: SV_POSITION;
+	float2 txcoord		: TEXCOORD0;
+	float2 vertices[10] 	: TEXCOORD1;
+};
+
 struct VS_OUTPUT_POST
 {
 	float4 pos		: SV_POSITION;
-	float2 txcoord0	: TEXCOORD0;
+	float2 txcoord		: TEXCOORD0;
 };
 
-
-
-//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-//
-//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-VS_OUTPUT_POST	VS_Quad(VS_INPUT_POST IN)
+VS_OUTPUT_DOF	VS_DoF(VS_INPUT_POST IN, uniform float scale)
 {
-	VS_OUTPUT_POST	OUT;
-	float4	pos;
-	pos.xyz=IN.pos.xyz;
-	pos.w=1.0;
-	OUT.pos=pos;
-	OUT.txcoord0.xy=IN.txcoord.xy;
+	VS_OUTPUT_DOF	OUT;
+	OUT.pos 	= float4(IN.pos.xyz, 1.0);
+	OUT.txcoord.xy 	= IN.txcoord.xy / scale;
+
+	[unroll]
+	for(int i=0; i<10; i++)
+		sincos(i * 6.2831853 / iADOF_ShapeVertices + radians(fADOF_ShapeRotation),OUT.vertices[i].y,OUT.vertices[i].x);
+
 	return OUT;
 }
 
-////////////////////////////////////////////////////////////////////
-//first passes to compute focus distance and aperture, temporary
-//render targets are not available for them
-////////////////////////////////////////////////////////////////////
-//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-//output size is 1*1
-//TexturePrevious size is 1*1
-//TextureCurrent not exist, so set to white 1.0
-//output and input textures are R32 float format (red channel only)
-//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-float4	PS_Aperture(VS_OUTPUT_POST IN, float4 v0 : SV_Position0) : SV_Target
+VS_OUTPUT_POST	VS_Quad(VS_INPUT_POST IN)
 {
-	float4	res;
-	float	curr;
-	float	prev=TexturePrevious.Sample(Sampler0, IN.txcoord0.xy).x;
-
-	curr=EApertureSize; 
-	curr=max(curr, 1.0); 
-	curr=1.0/curr; 
-
-	res=lerp(prev, curr, DofParameters.z); 
-
-	res=max(res, 0.0000000001);
-	res=min(res, 1.0);
-
-	res.w=1.0;
-	return res;
+	VS_OUTPUT_POST	OUT;
+	OUT.pos 	= float4(IN.pos.xyz, 1.0);
+	OUT.txcoord.xy 	= IN.txcoord.xy;
+	return OUT;
 }
 
-
-
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-//output size is 16*16
-//output texture is R32 float format (red channel only)
+// Functions
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-float4	PS_ReadFocus(VS_OUTPUT_POST IN, float4 v0 : SV_Position0) : SV_Target
+
+float GetLinearDepth(float2 texcoord)
 {
-	float4	res;
-	float2	pos;
-	float2	coord;
-	float	curr=0.0;
-	float tempcurr=0.0;
-	const float	step=1.0/16.0;
-	const float	halfstep=0.5/16.0;
-	pos.x=halfstep;
-	for (int x=0; x<16; x++)
+	float depth = TextureDepth.SampleLevel(SamplerLinear, texcoord.xy,0).x;
+	LinearizeDepth(depth);
+	return depth;
+}
+
+//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+float CircleOfConfusion(float2 texcoord, bool aggressiveLeakReduction)
+{
+	float2 depthdata; //x - linear scene depth, y - linear scene focus
+	float scenecoc;   //blur value, signed by position relative to focus plane
+
+	[branch]
+	if(aggressiveLeakReduction)
 	{
-		pos.y=halfstep;
-		for (int y=0; y<16; y++)
-		{
-			if (bManualFocus == true)								
-			{
-				coord = tempInfo2.xy;
-					
-			} 
-			else
-			{
-				coord=pos.xy * 0.05;
-				coord+=IN.txcoord0.xy * 0.05 + float2(fADOF_AutofocusCenter);
-			}	
-			tempcurr=TextureDepth.SampleLevel(Sampler0, coord, 0.0).x;	
-			
-			//do not blur first person models like weapons and hands
-			const float	fpdistance=1.0/0.085;
-			float	fpfactor=1.0-saturate(1.0 - tempcurr * fpdistance);
-			tempcurr=lerp(1.0, tempcurr, fpfactor*fpfactor);
-			curr+=tempcurr;
+		float4 depthsGather[2] = {TextureDepth.Gather(SamplerPoint, texcoord.xy - PixelSize.xy * 0.5  ),
+					  TextureDepth.Gather(SamplerPoint, texcoord.xy - PixelSize.xy * 0.5, 1)};
 
-			pos.y+=step;
-		}
-		pos.x+=step;
+		LinearizeDepth(depthsGather[0]);
+		LinearizeDepth(depthsGather[1]);
+
+		depthdata.x = min(min(min(depthsGather[0].x,depthsGather[0].z),min(depthsGather[1].x,depthsGather[1].z)),depthsGather[0].y);
+		depthdata.x = lerp(depthdata.x, depthsGather[0].y, 0.001);
 	}
-	curr*=1.0/(16.0*16.0);
-	res=curr;
-
-	res=max(res, 0.0);
-	res=min(res, 1.0);
-
-	return res;
-}
-
-
-
-//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-//output size is 1*1
-//TexturePrevious size is 1*1
-//TextureCurrent size is 16*16
-//output and input textures are R32 float format (red channel only)
-//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-float4	PS_Focus(VS_OUTPUT_POST IN, float4 v0 : SV_Position0) : SV_Target
-{
-	float4	res;
-	float	prev=TexturePrevious.Sample(Sampler0, IN.txcoord0.xy).x;
-	float2	pos;
-	float	curr=0.0;
-	float	currmin=1.0;
-	const float	step=1.0/16.0;
-	const float	halfstep=0.5/16.0;
-	pos.x=halfstep;
-	for (int x=0; x<16; x++)
+	else
 	{
-		pos.y=halfstep;
-		for (int y=0; y<16; y++)
+		depthdata.x = TextureDepth.Sample(SamplerPoint,texcoord.xy).x;
+		LinearizeDepth(depthdata.x);
+	}
+
+	depthdata.y = TextureFocus.Sample(SamplerPoint, texcoord.xy).x;
+	float handdepth = depthdata.x;
+
+	depthdata.xy = saturate(depthdata.xy / fADOF_HyperFocus); //hyperfocal distance
+
+	[branch]
+	if(depthdata.x < depthdata.y)
+	{
+		scenecoc = depthdata.x / depthdata.y - 1.0;
+		scenecoc = ldexp(scenecoc, -0.5*fADOF_NearBlurCurve*fADOF_NearBlurCurve);
+	}
+	else
+	{
+		scenecoc = (depthdata.x - depthdata.y)/(ldexp(depthdata.y, fADOF_FarBlurCurve*fADOF_FarBlurCurve) - depthdata.y);
+	        scenecoc = saturate(scenecoc);
+	}
+
+#if(FPS_HAND_BLUR_CUTOFF_CHECK != 0)
+	scenecoc = (handdepth < FPS_HAND_BLUR_CUTOFF_DIST * 1e-4) ? 0.0 : 1.0;
+#else //FPS_HAND_BLUR_CUTOFF_CHECK
+	scenecoc = (handdepth < FPS_HAND_BLUR_CUTOFF_DIST * 1e-4) ? 0.0 : scenecoc;
+#endif //FPS_HAND_BLUR_CUTOFF_CHECK
+
+	return scenecoc;
+}
+
+//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+// Pixel Shaders
+//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+//fullres -> 16x16 R32F
+float4	PS_ReadFocus(VS_OUTPUT_POST IN) : SV_Target
+{
+	float scenefocus = 0.0;
+
+        [branch]
+	if(bADOF_AutofocusEnable == true)
+	{
+		float samples = 10.0;
+		float weightsum = 1e-6;
+
+		for(float xcoord = 0.0; xcoord < samples; xcoord++)
+		for(float ycoord = 0.0; ycoord < samples; ycoord++)
 		{
-			float	tempcurr=TextureCurrent.Sample(Sampler0, IN.txcoord0.xy + pos.xy).x;
-			currmin=min(currmin, tempcurr);
-			curr+=tempcurr;
+			float2 sampleOffset = (float2(xcoord,ycoord) + 0.5) / samples;
+			sampleOffset = sampleOffset * 2.0 - 1.0;
+			sampleOffset *= fADOF_AutofocusRadius;
+			sampleOffset += (fADOF_AutofocusCenter - 0.5);
 
-			pos.y+=step;
+			float sampleWeight = saturate(1.2 * exp2(-dot(sampleOffset,sampleOffset)*4.0));
+
+			float tempfocus = GetLinearDepth(sampleOffset * 0.5 + 0.5);
+			sampleWeight *= rcp(tempfocus + 0.001);
+
+			sampleWeight *= saturate(tempfocus > FPS_HAND_BLUR_CUTOFF_DIST * 1e-4); //remove fps hands from focus calculations
+
+			scenefocus += tempfocus * sampleWeight;
+			weightsum += sampleWeight;
 		}
-		pos.x+=step;
+		scenefocus /= weightsum;
 	}
-	curr*=1.0/(16.0*16.0);
-	curr=lerp(curr, currmin, EFocusingSensitivity);
-
-	res=lerp(prev, curr, DofParameters.w); 
-	res=max(res, 0.0);
-	res=min(res, 1.0);
-
-	res.w=1.0;
-	return res;
-}
-
-
-float4 ChromaticAberration(float2 tex, float outOfFocus)
-{
-	int fChromaPower;
-	if  (bManualFocus) fChromaPower=8;
-	else fChromaPower=0;
-
-	float d = distance(tex, float2(0.5, 0.5));
-	float f = smoothstep(fBaseRadius, fFalloffRadius, d);
-	float3 chroma = pow(f + fvChroma, CHROMA_POW * outOfFocus * fChromaPower);
-
-	float2 tr = ((2.0 * tex - 1.0) * chroma.r) * 0.5 + 0.5;
-	float2 tg = ((2.0 * tex - 1.0) * chroma.g) * 0.5 + 0.5;
-	float2 tb = ((2.0 * tex - 1.0) * chroma.b) * 0.5 + 0.5;
-	
-	float3 color = float3(TextureColor.Sample(Sampler0, tr).r, TextureColor.Sample(Sampler0, tg).g, TextureColor.Sample(Sampler0, tb).b) * (1.0 - outOfFocus);
-	
-	return float4(color, 1.0);
-}
-
-
-float3 BrightPass(float2 tex)
-{
-	float3 c = TextureColor.Sample(Sampler0, tex).rgb;
-    float3 bC = max(c - float3(fFlareLuminance, fFlareLuminance, fFlareLuminance), 0.0);
-    float bright = dot(bC, 1.0);
-    bright = smoothstep(0.0f, 0.5, bright);
-    return lerp(0.0, c, bright);
-}
-
-float3 BrightColor(float3 c)
-{
-    float3 bC = max(c - float3(fFlareLuminance, fFlareLuminance, fFlareLuminance), 0.0);
-    float bright = dot(bC, 1.0);
-    bright = smoothstep(0.0f, 0.5, bright);
-    return lerp(0.0, c, bright);
-}
-
-float3 BrightBokeh(float3 c)
-{
-    float3 bC = max(c - float3(fBokehLuminance, fBokehLuminance, fBokehLuminance), 0.0);
-    float bright = dot(bC, 1.0);
-    bright = smoothstep(0.0f, 0.5, bright);
-    return lerp(0.0, c, bright);
-}
-
-float3 AnamorphicSample(int axis, float2 tex, float blur)
-{
-	tex = 2.0 * tex - 1.0;
-	if (!axis) tex.x /= -blur;
-	else tex.y /= -blur;
-	tex = 0.5 * tex + 0.5;
-	return BrightPass(tex);
-}
-
-float GrayScale(float3 sample)
-{
-	return dot(sample, float3(0.3, 0.59, 0.11));
-}
-
-
-///// PIXEL SHADERS ////////////////////////////////////////////////////////////////////////////////
-
-////////////////////////////////////////////////////////////////////
-//multiple passes for computing depth of field, with temporary render
-//targets support.
-//TextureCurrent, TexturePrevious are unused
-////////////////////////////////////////////////////////////////////
-//draw to temporary render target
-float4	PS_ComputeFactor(VS_OUTPUT_POST IN, float4 v0 : SV_Position0) : SV_Target
-{
-	float4	res;
-
-	float	depth=TextureDepth.Sample(Sampler0, IN.txcoord0.xy).x;
-	float	focus=TextureFocus.Sample(Sampler0, IN.txcoord0.xy).x;
-	float	aperture=TextureAperture.Sample(Sampler0, IN.txcoord0.xy).x;
-	
-	//clamp to avoid potenrial bugs
-	depth=max(depth, 0.0);
-	depth=min(depth, 1.0);
-
-	//compute blur radius
-	float	scaling=EBlurRange; //abstract scale in screen space
-	float	factor=depth-focus;
-
-	factor=factor * ESensorSize * aperture * scaling;
-	//limit size
-	float	screensizelimit=ESensorSize * scaling;
-	factor=max(factor, -screensizelimit);
-	factor=min(factor, screensizelimit);
-
-	res=factor;
-
-	//do not blur first person models like weapons
-	const float	fpdistance=1.0/0.085;
-	float	fpfactor=1.0-saturate(1.0 - depth * fpdistance);
-	res=res * fpfactor*fpfactor;
-
-	return res;
-}
-
-
-// Anamorphic lens flare pixel shader (Matso code)
-float4 PS_ProcessPass_Anamorphic(VS_OUTPUT_POST IN, float4 v0 : SV_Position0) : SV_Target
-{
-float4 res;
-	float2 coord = IN.txcoord0.xy;
-	float3 anamFlare = AnamorphicSample(0, coord.xy, fFlareBlur) * float3(0.0, 0.0, 1.0);
-	
-	res.rgb = anamFlare * fFlareIntensity;
-	res.a = 1.0;
-
-	res.rgb += TextureColor.Sample(Sampler0, coord.xy).rgb;
-
-	return res;
-}
-
-
-// Depth of field pixel shader (Matso code)
-float4 PS_ProcessPass_DepthOfField(VS_OUTPUT_POST IN, float4 v0 : SV_Position0, uniform int axis) : SV_Target
-{
-float4 res;
-	float2 base = IN.txcoord0.xy;
-	float4 tcol = TextureColor.Sample(Sampler0, base.xy);
-	float sd =TextureDepth.Sample(Sampler0, base.xy).x;						// acquire scene depth for the pixel
-	res = tcol;
-
-	float depth = linear(TextureDepth.Sample(Sampler1, base).x);
-	float z = depth * DEPTH_RANGE;
-	
-	float	fBS;
-	float	fBI;
-	
-	if (iDOFPreset==2) {
-	fBS 	=	0.45;
-	fBI 	=	0.25;
+	else
+	{
+		scenefocus = fADOF_ManualfocusDepth;
 	}
-	if (iDOFPreset==1) {
-	fBS 	=	0.8;
-	fBI 	=	0.5;
+
+	return scenefocus;
+}
+
+//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+//16x16 -> 1x1 R32F
+float4	PS_Focus(VS_OUTPUT_POST IN) : SV_Target
+{
+        float prevFocus = 0.0;
+	float currFocus = 0.0;
+
+	for(float x=0.0; x<16.0; x++)
+	for(float y=0.0; y<16.0; y++)
+	{
+		prevFocus += TexturePrevious.SampleLevel(SamplerPoint, float2(x,y) / 16.0, 0).x;
+		currFocus +=  TextureCurrent.SampleLevel(SamplerPoint, float2(x,y) / 16.0, 0).x;
 	}
-	if (iDOFPreset==0) {
-	fBS 	=	1.0f;
-	fBI 	=	0.75;
+
+	return (bADOF_AutofocusEnable) ? 0.00390625 * lerp(prevFocus,currFocus,DofParameters.w) : currFocus * 0.00390625;
+}
+
+//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+float4	PS_CoC(VS_OUTPUT_POST IN) : SV_Target
+{
+	float4 color = TextureColor.Sample(SamplerLinear, IN.txcoord.xy);
+
+	static const float2 sampleOffsets[4] = {float2( 1.5, 0.5) * PixelSize.xy,
+		                                float2( 0.5,-1.5) * PixelSize.xy,
+				                float2(-1.5,-0.5) * PixelSize.xy,
+				                float2(-0.5, 1.5) * PixelSize.xy};
+
+	float4 compColor = 0.0;
+	float centerDepth = TextureDepth.Sample(SamplerLinear, IN.txcoord.xy).x;
+	LinearizeDepth(centerDepth);
+
+	[loop]
+	for(int i=0; i<4; i++)
+	{
+		float2 sampleCoord = IN.txcoord.xy + sampleOffsets[i];
+
+		float3 sampleColor = TextureColor.Sample(SamplerLinear, sampleCoord).rgb;
+		float4 sampleDepths = TextureDepth.Gather(SamplerLinear, sampleCoord);
+
+		sampleColor /= 1.0 + max(max(sampleColor.r, sampleColor.g), sampleColor.b);
+
+		float sampleDepthMin = min(min(sampleDepths.x,sampleDepths.y),min(sampleDepths.z,sampleDepths.w));
+		LinearizeDepth(sampleDepthMin);
+
+		float sampleWeight = saturate(sampleDepthMin * rcp(centerDepth) + 1e-3);
+		compColor += float4(sampleColor.rgb * sampleWeight, sampleWeight);
 	}
-	if (iDOFPreset==-1) {
-	fBS 	=	1.5;
-	fBI 	=	1.0f;
+
+	compColor.rgb /= compColor.a;
+	compColor.rgb /= 1.0 - max(compColor.r, max(compColor.g, compColor.b));
+
+	color.rgb = lerp(color.rgb, compColor.rgb, saturate(compColor.w * 8.0));
+	color.w = CircleOfConfusion(IN.txcoord.xy, 1);
+
+	return color;
+}
+
+//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+void ShapeRoundness(inout float2 sampleOffset, in float roundness)
+{
+	sampleOffset *= (1.0-roundness) + rsqrt(dot(sampleOffset,sampleOffset))*roundness;
+}
+
+void OpticalVignette(in float2 sampleOffset, in float2 centerVec, inout float sampleWeight)
+{
+	sampleOffset -= centerVec; //scaled by vignette intensity
+	sampleWeight *= saturate(3.33 - dot(sampleOffset,sampleOffset) * 1.666); //notsosmoothstep to avoid aliasing
+}
+
+float2 CoC2BlurRadius(float CoC)
+{
+	return float2(fADOF_ShapeAnamorphRatio,ScreenSize.z) * CoC * fADOF_ShapeRadius * 6e-4;
+}
+
+float4	PS_DoF_Main(VS_OUTPUT_DOF IN, float4 vPos : SV_POSITION) : SV_Target
+{
+	clip(1.01-max(IN.txcoord.x,IN.txcoord.y));
+
+	float4 BokehSum, BokehMax;
+	BokehMax = BokehSum	= TextureColor.Sample(SamplerLinear, IN.txcoord.xy);
+	float weightSum = 1.0;
+	float CoC = abs(BokehSum.w);
+	float2 bokehRadiusScaled = CoC2BlurRadius(CoC);
+	float nRings = lerp(1.0,iADOF_ShapeQuality,saturate(CoC)) + fmod(dot(vPos.xy,1),2)*0.5;
+
+	if(bokehRadiusScaled.x < DISCRADIUS_RESOLUTION_BOUNDARY_LOWER * ScreenSize.y) return BokehSum;
+
+	bokehRadiusScaled /= nRings;
+	CoC /= nRings;
+
+#if (ADOF_OPTICAL_VIGNETTE_ENABLE != 0)
+	float2 centerVec = IN.txcoord.xy - 0.5;
+	float centerDist = sqrt(dot(centerVec,centerVec));
+	float vignette = pow(centerDist, fADOF_ShapeVignetteCurve) * fADOF_ShapeVignetteAmount;
+	centerVec = centerVec / centerDist * vignette;
+	weightSum *= saturate(3.33 - vignette * 2.0);
+	BokehSum *= weightSum;
+	BokehMax *= weightSum;
+#endif
+
+	[loop]for (int iVertices = 0; iVertices < iADOF_ShapeVertices; iVertices++)
+	[loop]for(float iRings = 1; iRings <= nRings; iRings++)
+	[loop]for(float iSamplesPerRing = 0; iSamplesPerRing < iRings; iSamplesPerRing++)
+	{
+		float2 sampleOffset = lerp(IN.vertices[iVertices],IN.vertices[iVertices+1],iSamplesPerRing/iRings);
+		ShapeRoundness(sampleOffset,fADOF_ShapeCurvatureAmount);
+
+		float4 sampleBokeh 	= TextureColor.SampleLevel(SamplerLinear, IN.txcoord.xy + sampleOffset.xy * (bokehRadiusScaled * iRings),0);
+		float sampleWeight	= saturate(1e6 * (abs(sampleBokeh.a) - CoC * (float)iRings) + 1.0);
+		//float sampleWeight = saturate((abs(sampleBokeh.a) + CoC * (2.0 - iRings + abs(sampleBokeh.a)))/(4.0*CoC)); //mcfly '17 v2, smooth transition between quality steps
+
+#if (ADOF_OPTICAL_VIGNETTE_ENABLE != 0)
+		OpticalVignette(sampleOffset.xy * iRings/nRings, centerVec, sampleWeight);
+#endif
+		sampleBokeh.rgb 	*= sampleWeight;
+		weightSum 		+= sampleWeight;
+		BokehSum 		+= sampleBokeh;
+		BokehMax 		= max(BokehMax,sampleBokeh);
 	}
-	
-#ifndef USE_SMOOTH_DOF										// sample focus value
-	float sf = TextureDepth.Sample(Sampler0, 0.5).x - fFocusBias;
+
+	return lerp(BokehSum / weightSum, BokehMax, fADOF_BokehIntensity * saturate(CoC * nRings * 4.0));
+}
+
+//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+float4	PS_DoF_Combine(VS_OUTPUT_POST IN) : SV_Target
+{
+	float4 blurredColor   = TextureColor.Sample(SamplerLinear,  IN.txcoord.xy * fADOF_RenderResolutionMult); //Median3x3Upscale(TextureColor, IN.txcoord.xy, fADOF_RenderResolutionMult);
+	float4 originalColor  = TextureOriginal.Sample(SamplerPoint,  IN.txcoord.xy);
+
+	float CoC 			= CircleOfConfusion(IN.txcoord.xy, 0);
+	float CoCblurred	= blurredColor.a;
+
+	float bokehRadiusPixels = abs(CoC2BlurRadius(CoC).x * ScreenSize.x);
+
+	float blendWeight = linearstep(DISCRADIUS_RESOLUTION_BOUNDARY_LOWER, DISCRADIUS_RESOLUTION_BOUNDARY_UPPER, bokehRadiusPixels);
+	      blendWeight = pow(blendWeight,DISCRADIUS_RESOLUTION_BOUNDARY_CURVE);
+
+	float4 BokehSum;
+	BokehSum.rgb 	= lerp(originalColor.rgb, blurredColor.rgb, blendWeight);
+	BokehSum.a      = saturate(abs(lerp(CoC,CoCblurred,blendWeight*0)) * GAUSSIAN_BUILDUP_MULT);
+
+	return BokehSum;
+}
+
+//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+float4	PS_DoF_Gauss(uniform float2 axis, uniform bool overrideAlpha, VS_OUTPUT_POST IN) : SV_Target
+{
+	float4 centerTap = TextureColor.Sample(SamplerLinear, IN.txcoord.xy);
+
+	float nSteps 		= centerTap.a * (fADOF_SmootheningAmount + 1.0);
+	float expCoeff 		= -2.0 * rcp(nSteps * nSteps + 1e-3); //sigma adjusted for blur width
+	float2 blurAxisScaled 	= axis * PixelSize.xy;
+
+	float4 gaussianSum = 0.0;
+	float  gaussianSumWeight = 1e-3;
+
+	nSteps = floor(nSteps); //doing this after computing the sigma makes the additional steps fade in smoothly
+
+	for(float iStep = -nSteps; iStep <= nSteps; iStep++)
+	{
+		float currentWeight = exp(iStep * iStep * expCoeff);
+		float currentOffset = 2.0 * iStep - 0.5; //Sample between texels to double blur width at no cost
+
+		float4 currentTap = TextureColor.SampleLevel(SamplerLinear, IN.txcoord.xy + blurAxisScaled.xy * currentOffset, 0);
+
+		currentWeight *= saturate(currentTap.a - centerTap.a * 0.25);
+
+		gaussianSum += currentTap * currentWeight;
+		gaussianSumWeight += currentWeight;
+	}
+
+	gaussianSum /= gaussianSumWeight;
+
+	float4 BokehSum = lerp(centerTap, gaussianSum, saturate(gaussianSumWeight));
+#if (ADOF_CHROMATIC_ABERRATION_ENABLE != 0)
+	if(overrideAlpha) BokehSum.a = CircleOfConfusion(IN.txcoord.xy, 0);
 #else
-	float sf = TextureFocus.Sample(Sampler0, 0.5).x - fFocusBias * 2.0;
+	//fix potential bugs in enbeffect if that code erroneously takes alpha into account
+	//old ENB vanilla procedural CC did this, dot(color.rgba, 0.3333) != dot(color.rgb, 0.333)
+    if(overrideAlpha) BokehSum.a = 1;    
 #endif
-	float outOfFocus = DOF(sd, sf);
-	
-	if (bManualFocus == false)								
-	{
-		outOfFocus*= smoothstep(fCloseDofDistance - 0.05, fCloseDofDistance, z);
-	}
-	float blur = DOF_SCALE * outOfFocus;
-	float wValue = 1.0;
+	return BokehSum;
+}
 
+//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+#if (ADOF_CHROMATIC_ABERRATION_ENABLE != 0)
+float4	PS_DoF_ChromaticAberration(VS_OUTPUT_POST IN, float4 vPos : SV_POSITION) : SV_Target
+{
+	float4 colorVals[5];
 
-#ifndef USE_CLOSE_DOF_ONLY
- #ifdef USE_BOKEH_DOF
-	blur *= BOKEH_DOWNBLUR;									// should bokeh be used, decrease blur a bit
- #endif
-#else	
-	blur *= (smoothstep(fCloseDofDistance, 0.0, sf) * 2.0);
-	if (blur > 0.001)
+	colorVals[0] = TextureColor.Load(int3(vPos.x, vPos.y, 0));
+	colorVals[1] = TextureColor.Load(int3(vPos.x - 1, vPos.y, 0)); //L
+	colorVals[2] = TextureColor.Load(int3(vPos.x, vPos.y - 1, 0)); //T
+	colorVals[3] = TextureColor.Load(int3(vPos.x + 1, vPos.y, 0)); //R
+	colorVals[4] = TextureColor.Load(int3(vPos.x, vPos.y + 1, 0)); //B
+
+	float CoC 			= abs(colorVals[0].a);
+	float2 bokehRadiusScaled	= CoC2BlurRadius(CoC);
+
+	float4 vGradTwosided = float4(dot(colorVals[0].rgb - colorVals[1].rgb, 1),	 //C - L
+	                              dot(colorVals[0].rgb - colorVals[2].rgb, 1),	 //C - T
+				      			  dot(colorVals[3].rgb - colorVals[0].rgb, 1),	 //R - C
+				      			  dot(colorVals[4].rgb - colorVals[0].rgb, 1)); 	 //B - C
+
+	float2 vGrad = min(vGradTwosided.xy, vGradTwosided.zw);
+
+	float vGradLen = sqrt(dot(vGrad,vGrad)) + 1e-6;
+	vGrad = vGrad / vGradLen * saturate(vGradLen * 32.0) * bokehRadiusScaled * 0.125 * fADOF_ShapeChromaAmount;
+
+	float4 chromaVals[3];
+
+	chromaVals[0] = colorVals[0];
+	chromaVals[1] = TextureColor.Sample(SamplerLinear, IN.txcoord.xy + vGrad);
+	chromaVals[2] = TextureColor.Sample(SamplerLinear, IN.txcoord.xy - vGrad);
+
+	chromaVals[1].rgb = lerp(chromaVals[0].rgb, chromaVals[1].rgb, saturate(4.0 * abs(chromaVals[1].w)));
+	chromaVals[2].rgb = lerp(chromaVals[0].rgb, chromaVals[2].rgb, saturate(4.0 * abs(chromaVals[2].w)));
+
+	uint3 chromaMode = (uint3(0,1,2) + iADOF_ShapeChromaMode.xxx) % 3;
+
+	float4 BokehSum;
+	BokehSum.rgb = float3(	chromaVals[chromaMode.x].r,
+		              		chromaVals[chromaMode.y].g,
+			      			chromaVals[chromaMode.z].b);
+	BokehSum.a = 1.0;
+
+	return BokehSum;
+}
 #endif
+//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+// Techniques
+//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-	for (int i = 0; i < 4; i++)
-	{
-#ifndef USE_NATURAL_BOKEH
-		float2 tdir = tds[axis] * fvTexelSize * blur * offset[i];
-#else
-		float2 tdir = tds[axis * 4 + i] * fvTexelSize * blur * offset[i];
+//I just HATE messy technique sections..
+
+#define TECH11(NAME, VERTEXSHADER, PIXELSHADER)\
+technique11 NAME { pass p0 { SetVertexShader(CompileShader(vs_5_0, VERTEXSHADER)); SetPixelShader(CompileShader(ps_5_0, PIXELSHADER)); }}
+
+TECH11(ReadFocus, 					VS_Quad(), 				PS_ReadFocus())
+TECH11(Focus, 						VS_Quad(), 				PS_Focus())
+TECH11(DOF <string UIName="Marty McFly's ADOF";>, 	VS_Quad(), 				PS_CoC())
+TECH11(DOF1, 						VS_DoF(fADOF_RenderResolutionMult), 	PS_DoF_Main())
+TECH11(DOF2, 						VS_Quad(), 				PS_DoF_Combine())
+TECH11(DOF3, 						VS_Quad(), 				PS_DoF_Gauss(float2(0,1),0))
+TECH11(DOF4, 						VS_Quad(), 				PS_DoF_Gauss(float2(1,0),1))
+#if (ADOF_CHROMATIC_ABERRATION_ENABLE != 0)
+TECH11(DOF5, 						VS_Quad(), 				PS_DoF_ChromaticAberration())
 #endif
-		
-		float2 coord = base + tdir.xy;
-
-		float4 ct = ChromaticAberration(coord, outOfFocus);			// chromatic aberration sampling
-
-		float sds = TextureDepth.Sample(Sampler0, coord).x;
-		
-		if ((abs(sds - sd) / sd) <= fBlurCutoff) {							// blur 'bleeding' control
-#ifndef USE_BOKEH_DOF
-			float w = 1.0 + abs(offset[i]);							// weight blur for better effect
-#else		
-  #if USE_BOKEH_DOF == 1
-  			BOKEH_FORMULA;
-    #ifndef USE_BRIGHTNESS_LIMITING									// all samples above max input will be limited to max level
-			float w = pow(b * fBokehIntensity, fBokehCurve);
-    #else
-	 #ifdef USE_ENHANCED_BOKEH
-			float w = smoothstep(fBokehMin, fBokehMax, b * b) * fBokehMaxLevel;
-	 #else
-	 		float w = smoothstep(fBokehMin, fBokehMax, b) * fBokehMaxLevel;
-	 #endif
-    #endif
-	#ifdef USE_WEIGHT_CLAMP
-			w = min(w, fBokehMaxWeight);
-	#endif
-			w += abs(offset[i]) + blur;
-  #endif
-  
-#endif	
-			tcol += ct * w;
-			wValue += w;
-		}
-	}
-
-	tcol /= wValue;
-	
-	
-	res.rgb = tcol.rgb;
-	res.w = 1.0;
-	return res;
-}
-
-
-//example of blur. without any fixes of artifacts and low performance
-float4	PS_Dof(VS_OUTPUT_POST IN, float4 v0 : SV_Position0) : SV_Target
-{
-	float4	res;
-
-	float	focusing;
-	focusing=RenderTargetR16F.Sample(Sampler0, IN.txcoord0.xy).x;
-
-	float2	sourcesizeinv;
-	float2	fstepcount;
-	sourcesizeinv=ScreenSize.y;
-	sourcesizeinv.y=ScreenSize.y*ScreenSize.z;
-	fstepcount.x=ScreenSize.x;
-	fstepcount.y=ScreenSize.x*ScreenSize.w;
-
-	float2	pos;
-	float2	coord;
-	float4	curr=0.0;
-	float	weight=0.000001;
-
-	fstepcount=abs(focusing);
-	sourcesizeinv*=focusing;
-
-	fstepcount=min(fstepcount, 32.0);
-	fstepcount=max(fstepcount, 0.0);
-
-	int	stepcountX=(int)(fstepcount.x+1.4999);
-	int	stepcountY=(int)(fstepcount.y+1.4999);
-	fstepcount=max(fstepcount, 2.0);
-	float2	halfstepcountinv=2.0/fstepcount;
-	pos.x=-1.0+halfstepcountinv.x;
-	for (int x=0; x<stepcountX; x++)
-	{
-		pos.y=-1.0+halfstepcountinv.y;
-		for (int y=0; y<stepcountY; y++)
-		{
-			float	tempweight;
-			float	rangefactor=dot(pos.xy, pos.xy);
-			coord=pos.xy * sourcesizeinv;
-			coord+=IN.txcoord0.xy;
-			float4	tempcurr=TextureColor.SampleLevel(Sampler1, coord.xy, 0.0);
-			tempweight=saturate(1001.0 - 1000.0*rangefactor);//arithmetic version to cut circle from square
-			tempweight*=saturate(1.0 - rangefactor * EBokehSoftness);
-			curr.xyz+=tempcurr.xyz * tempweight;
-			weight+=tempweight;
-
-			pos.y+=halfstepcountinv.y;
-		}
-		pos.x+=halfstepcountinv.x;
-	}
-	curr.xyz/=weight;
-
-	res.xyz=curr;
-
-	res.w=1.0;
-	return res;
-}
-
-//////////////////////////////////////////////////////////////////////////////////////////////////////////////
-//write aperture with time factor, this is always first technique
-technique11 Aperture
-{
-	pass p0
-	{
-		SetVertexShader(CompileShader(vs_5_0, VS_Quad()));
-		SetPixelShader(CompileShader(ps_5_0, PS_Aperture()));
-	}
-}
-
-//compute focus from depth of screen and may be brightness, this is always second technique
-technique11 ReadFocus
-{
-	pass p0
-	{
-		SetVertexShader(CompileShader(vs_5_0, VS_Quad()));
-		SetPixelShader(CompileShader(ps_5_0, PS_ReadFocus()));
-	}
-}
-
-//write focus with time factor, this is always third technique
-technique11 Focus
-{
-	pass p0
-	{
-		SetVertexShader(CompileShader(vs_5_0, VS_Quad()));
-		SetPixelShader(CompileShader(ps_5_0, PS_Focus()));
-	}
-}
-////////////////////////////////////////////////////////////////////
-// End focusing code
-////////////////////////////////////////////////////////////////////
-
-technique11 Dof <string UIName="THE ENHANCER"; string RenderTarget="RenderTargetR16F";>
-{
-	pass p0
-	{
-		SetVertexShader(CompileShader(vs_5_0, VS_Quad()));
-		SetPixelShader(CompileShader(ps_5_0, PS_ComputeFactor()));
-	}
-}
-
-technique11 Dof1
-{
-	pass P0
-	{
-		SetVertexShader(CompileShader(vs_5_0, VS_Quad()));
-		SetPixelShader(CompileShader(ps_5_0, PS_ProcessPass_DepthOfField(FIRST_PASS)));
-	}
-}
-
-technique11 Dof2
-{
-	pass P0
-	{
-		SetVertexShader(CompileShader(vs_5_0, VS_Quad()));
-		SetPixelShader(CompileShader(ps_5_0, PS_ProcessPass_DepthOfField(SECOND_PASS)));
-	}
-}
-technique11 Dof3
-{
-	pass P0
-	{
-		SetVertexShader(CompileShader(vs_5_0, VS_Quad()));
-		SetPixelShader(CompileShader(ps_5_0, PS_ProcessPass_DepthOfField(THIRD_PASS)));
-	}
-}
-
-technique11 Dof4
-{
-	pass P0
-	{
-		SetVertexShader(CompileShader(vs_5_0, VS_Quad()));
-		SetPixelShader(CompileShader(ps_5_0, PS_ProcessPass_DepthOfField(FOURTH_PASS)));
-	}
-}
